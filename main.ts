@@ -1,134 +1,95 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
-
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
+declare global {
+	interface Window {
+		Iconize: {
+			render: () => void;
+		};
+	}
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
+import { Plugin } from 'obsidian';
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class ObsitestPlugin extends Plugin {
+
+	private recipeTimes: Record<string, number> = {
+		"Iron Gear": 0.5,  // Takes 0.5 seconds to craft one Iron Gear
+		"Copper Cable": 0.2, // Takes 0.2 seconds to craft one Copper Cable
+		// Add more recipes as needed
+	};
+
+
 
 	async onload() {
-		await this.loadSettings();
+		console.log("Obsitest plugin loaded");
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
+		// Register the Markdown code block processor for "factory"
+		this.registerMarkdownCodeBlockProcessor('factory', (source, el, ctx) => {
+			const params = this.parseFactoryBlock(source);
+			const productionRate = this.calculateProductionRate(params.recipe, params.machines);
+
+			// Generate the container for the machine box
+			const machineBox = this.createMachineBox(params.recipe, params.machines, productionRate);
+			el.appendChild(machineBox);
 		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+	}
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+	parseFactoryBlock(source: string) {
+		const lines = source.split('\n');
+		const recipeLine = lines.find(line => line.startsWith('recipe'));
+		const machinesLine = lines.find(line => line.startsWith('machines'));
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+		// Check if the recipe line exists and split it
+		const recipe = recipeLine ? recipeLine.split(':')[1].trim() : '';
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
+		// Check if the machines line exists and parse it
+		const machines = machinesLine ? parseInt(machinesLine.split(':')[1].trim()) : 0;
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		return { recipe, machines };
+	}
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+	calculateProductionRate(recipe: string, machines: number): string {
+		const craftTime = this.recipeTimes[recipe] || 1; // Default to 1 second if recipe not found
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		// Calculate items per minute
+		const itemsPerMinute = (machines / craftTime) * 60; // Convert to items per minute
+		return itemsPerMinute.toFixed(2); // Return formatted string
+	}
+
+	createMachineBox(recipe: string, machines: number, productionRate: string): HTMLElement {
+		const div = document.createElement('div');
+		div.classList.add('machine-box');
+
+		// Correct relative path
+		const iconPath = "factoricons/assembling-machine-2.png"; // No leading slashes or app://
+
+		// Update innerHTML to include the image
+		div.innerHTML = `
+        <img src="${iconPath}" style="width: 64px; height: 64px;">
+        <strong>Recipe:</strong> ${recipe}<br>
+        <strong>Machines:</strong> ${machines}<br>
+        <strong>Production Rate:</strong> ${productionRate} items/minute
+    `;
+
+		return div;
+	}
+
+	addRow() {
+		const row = document.createElement('div');
+		row.classList.add('machine-row');
+
+		const addButton = document.createElement('button');
+		addButton.innerText = "Add Machine";
+		addButton.onclick = () => this.addMachineBox(row);
+
+		row.appendChild(addButton);
+		document.body.appendChild(row);
+	}
+
+	addMachineBox(row: HTMLElement) {
+		const machineBox = this.createMachineBox('Iron Gear', 5, '10/s');
+		row.appendChild(machineBox);
 	}
 
 	onunload() {
-
-	}
-
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
-
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
+		console.log("Obsitest plugin unloaded");
 	}
 }
